@@ -2,8 +2,9 @@ package Typecheck.Pass;
 
 import Typecheck.TypeCheckException;
 import Typecheck.Types.*;
-
-public class TypeAnnotationPass extends Pass<Void> {
+//this pass takes the text the user wrote and
+// translates into its Types that will later be userd
+public class TypeAnnotationPass extends ScopePass<Void> {
 
     // Hint: Build the base type from the name, then wrap it for pointers and any [] modifiers.
     // 1. Construct the base type ("string" -> STRING)
@@ -25,23 +26,71 @@ public class TypeAnnotationPass extends Pass<Void> {
     //         a. Pull the first bracket ([]) and construct an ARRAY(basetype)
     //            Pull the next bracket and construct an ARRAY(ARRAY(basetype))
     //            Keep repeating.
+    public TypeAnnotationPass(Scope s) {
+        super(s);
+    }
     @Override
     public Void visitType(Absyn.Type node) {
-        // Here is how I checked if the type needed ARRAY or a LIST:
-        // Feel free to use it or change it. 
-        boolean isARRAY = node.brackets.list.stream()
-                .allMatch(e -> ((Absyn.ArrayType) e).size instanceof Absyn.EmptyExp);
-        boolean isLIST = node.brackets.list.stream()
-                .allMatch(e -> ((Absyn.ArrayType) e).size instanceof Absyn.DecLit);
-        if (!isARRAY && !isLIST && node.brackets.list.size() != 0) {
-            throw new TypeCheckException("Array has invalid parameters in []");
+        // is the base identity of the type. Is it a primitive (int/string), 
+        // a placeholder (ALIAS), or the absence of a type (VOID)?
+        Type currentType = node.name.equals("int") ? new INT()
+                        : node.name.equals("string") ? new STRING()
+                        : node.name.equals("void") ? new VOID()
+                        : new ALIAS(node.name);
+        // For every 'star' symbol in the source code, wrap the current type 
+        // inside a POINTER object. (e.g., int** becomes POINTER(POINTER(INT)))
+        for (int i = 0; i < node.stars; i++) {
+            currentType = new POINTER(currentType);
         }
 
-        Type basetype = node.name.equals("int") ? new INT()
-                : node.name.equals("string") ? new STRING()
-                : node.name.equals("void") ? new VOID()
-                : new ALIAS(node.name);
+        // 3. Structural Wrapping (Arrays and Lists):
+        // Examine the brackets from the inside out. 
+        // Empty brackets [] imply a dynamic ARRAY.
+        // Brackets with a constant [10] imply a fixed-size LIST.
+        for (Absyn.ArrayType bracket : node.brackets.list) {
+            if (bracket.size instanceof Absyn.EmptyExp) {
+                // No size specified: treat as a pointer-style ARRAY
+                currentType = new ARRAY(currentType);
+            } else if (bracket.size instanceof Absyn.DecLit) {
+                // Concrete size found: treat as a rigid LIST of specific length
+                int size = ((Absyn.DecLit) bracket.size).value;
+                currentType = new LIST(currentType, size); 
+            }
+        }
 
+        // 4. Final Stamp:
+        // Attach this fully-constructed type "blueprint" back onto the AST node 
+        // so the JudgementsPass can find it later.
+        node.typeAnnotation = currentType;
+        return null;
+    }
+    //let the complier know what types certain inputs are and
+    //if these should be hardcoded
+    @Override
+    public Void visitDecLit(Absyn.DecLit node) {
+        // Label raw numeric constants as the INT type
+        node.typeAnnotation = new INT();
+        return null;
+    }
+    //helps look up variables!
+    @Override
+    public Void visitStrLit(Absyn.StrLit node) {
+        // Label text constants as the STRING type
+        node.typeAnnotation = new STRING();
+        return null;
+    }
+    @Override
+    public Void visitIdExp(Absyn.IdExp node) {
+        // Retrieve the type definition from the Symbol Table (the "Scope")
+        // This connects this usage of a variable to its earlier declaration.
+        Type discoveredType = currentscope.getVar(node.name);
+        
+        if (discoveredType == null) {
+            throw new TypeCheckException("The variable '" + node.name + "' has not been defined.");
+        }
+        
+        // Stamp the discovered type onto this specific expression node
+        node.typeAnnotation = discoveredType;
         return null;
     }
 }

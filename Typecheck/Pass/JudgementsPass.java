@@ -1,46 +1,49 @@
 package Typecheck.Pass;
-
 import Absyn.*;
 import Typecheck.SymbolTable.*;
 import Typecheck.TypeCheckException;
+import Typecheck.Types.*;
 
+//This file uses the annotations created in previous passes
+// to judge if the code is logically valid.
 public class JudgementsPass extends ScopePass<Void> {
 
+    private Type expectedReturn; // Tracks the return type of the current function
     public JudgementsPass(Scope s) {
         super(s);
     }
-
     // =========================
-    // Variable Declaration ( MOST IMPORTANT)
+    // Variable Declaration
     // =========================
     @Override
     public Void visitVarDecl(VarDecl node) {
         if (node.init != null) {
+            // 1. Visit the initializer to ensure it's checked
             visit(node.init);
 
-            // catch invalid initialization like {1,1}
-            if (!(node.init instanceof DecLit)
-                    && !(node.init instanceof StrLit)) {
-                throw new TypeCheckException("Invalid initialization");
+            // 2. Rule: Initializer type must be compatible with the variable type
+            if (!node.typeAnnotation.canAccept(node.init.typeAnnotation)) {
+                throw new TypeCheckException("Type Mismatch: Cannot initialize " + node.name + 
+                    " of type " + node.typeAnnotation + " with " + node.init.typeAnnotation);
             }
         }
-
         return null;
     }
 
     // =========================
-    // Binary Expressions
+    // Binary Expressions (Math/Logic)
     // =========================
     @Override
     public Void visitBinOp(BinOp node) {
-        visit(node.left);
-        visit(node.right);
+        super.visitBinOp(node);
 
-        // string + string
-        if (node.left instanceof StrLit || node.right instanceof StrLit) {
-            throw new TypeCheckException("Math requires numbers");
+        // Rule 1: Arithmetic requires numeric types (INT or POINTER)
+        boolean leftOk = node.left.typeAnnotation instanceof INT || node.left.typeAnnotation instanceof POINTER;
+        boolean rightOk = node.right.typeAnnotation instanceof INT || node.right.typeAnnotation instanceof POINTER;
+
+        if (!leftOk || !rightOk) {
+            throw new TypeCheckException("Arithmetic operations require numeric types (int or pointer)");
         }
-
         return null;
     }
 
@@ -49,92 +52,92 @@ public class JudgementsPass extends ScopePass<Void> {
     // =========================
     @Override
     public Void visitAssignExp(AssignExp node) {
-        visit(node.left);
-        visit(node.right);
+        super.visitAssignExp(node);
 
-        //  int = string
-        if (node.left instanceof DecLit && node.right instanceof StrLit) {
-            throw new TypeCheckException("Invalid assignment");
+        // Rule: The left-hand side must be able to "accept" the right-hand side value
+        if (!node.left.typeAnnotation.canAccept(node.right.typeAnnotation)) {
+            throw new TypeCheckException("Assignment Mismatch: " + node.left.typeAnnotation + 
+                " cannot accept " + node.right.typeAnnotation);
         }
-
-        //  string = int
-        if (node.left instanceof StrLit && node.right instanceof DecLit) {
-            throw new TypeCheckException("Invalid assignment");
-        }
-
         return null;
     }
 
     // =========================
-    // If Statement
+    // Control Flow (If/While)
     // =========================
     @Override
     public Void visitIfStmt(IfStmt node) {
-        visit(node.expression);
+        super.visitIfStmt(node);
 
-        if (!(node.expression instanceof DecLit)) {
-            throw new TypeCheckException("If condition must be number");
+        // Rule 11: Conditions must evaluate to a number or a pointer
+        Type condType = node.expression.typeAnnotation;
+        if (!(condType instanceof INT || condType instanceof POINTER)) {
+            throw new TypeCheckException("Condition must be numeric or a pointer");
         }
-
-        visit(node.if_statement);
-        if (node.else_statement != null) {
-            visit(node.else_statement);
-        }
-
         return null;
     }
 
-    // =========================
-    // While Statement
-    // =========================
     @Override
     public Void visitWhileStmt(WhileStmt node) {
-        visit(node.expression);
+        super.visitWhileStmt(node);
 
-        if (!(node.expression instanceof DecLit)) {
-            throw new TypeCheckException("While condition must be number");
+        // Rule 11: Same as IfStmt
+        Type condType = node.expression.typeAnnotation;
+        if (!(condType instanceof INT || condType instanceof POINTER)) {
+            throw new TypeCheckException("While loop condition must be numeric or a pointer");
         }
-
-        visit(node.statement);
         return null;
     }
 
     // =========================
-    // Unary Expressions
+    // Function Declarations & Returns
+    // =========================
+    @Override
+    public Void visitFunDecl(FunDecl node) {
+        // Save the outer return type (for nested functions)
+        Type oldReturn = expectedReturn;
+        
+        // Extract return type from the function's own annotation
+        if (node.typeAnnotation instanceof FUNCTION) {
+            expectedReturn = ((FUNCTION) node.typeAnnotation).returnType;
+        }
+
+        super.visitFunDecl(node); // Process the body
+        
+        expectedReturn = oldReturn; // Restore previous state
+        return null;
+    }
+
+    @Override
+    public Void visitReturnStmt(ReturnStmt node) {
+        super.visitReturnStmt(node);
+
+        Type actualReturn = (node.expression != null) ? node.expression.typeAnnotation : new VOID();
+
+        // Rule: Returned value must match the function's defined return type
+        if (expectedReturn != null && !expectedReturn.canAccept(actualReturn)) {
+            throw new TypeCheckException("Return Mismatch: Expected " + expectedReturn + 
+                " but got " + actualReturn);
+        }
+        return null;
+    }
+
+    // =========================
+    // Unary & Function Calls
     // =========================
     @Override
     public Void visitUnaryExp(UnaryExp node) {
-        visit(node.exp);
+        super.visitUnaryExp(node);
+        if (!(node.exp.typeAnnotation instanceof INT)) {
+            throw new TypeCheckException("Unary operators only apply to integers");
+        }
         return null;
     }
 
-    // =========================
-    // Function Calls
-    // =========================
     @Override
     public Void visitFunExp(FunExp node) {
-        visit(node.name);
-        visit(node.params);
-        return null;
-    }
-
-    // =========================
-    // Return 
-    // =========================
-    @Override
-    public Void visitReturnStmt(ReturnStmt node) {
-        visit(node.expression);
-
-        if (node.expression == null) {
-            throw new TypeCheckException("Return must have a value");
-        }
-
-        //  returning something weird
-        if (!(node.expression instanceof DecLit)
-                && !(node.expression instanceof StrLit)) {
-            throw new TypeCheckException("Invalid return type");
-        }
-
+        super.visitFunExp(node);
+        // Additional parameter-to-argument matching logic would go here
         return null;
     }
 }

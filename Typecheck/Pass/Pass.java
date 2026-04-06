@@ -1,6 +1,7 @@
 package Typecheck.Pass;
 import Typecheck.TypeCheckException;
 import Absyn.*;
+//This file is the foundation, with the job of walking trhough every branch of the tree
 
 public class Pass<T> implements Visitor<T> {
    public T result;
@@ -103,7 +104,9 @@ public class Pass<T> implements Visitor<T> {
 	public T visitIfStmt(IfStmt node) {
       visit(node.expression);
       visit(node.if_statement);
-      visit(node.else_statement);
+     //create the conditional because many if/else statements have no else block
+	  if visit(node.else_statement!=null);
+	  	visit(node.else_statement)
 		return defaultReturn;
 	}
 	@Override

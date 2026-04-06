@@ -14,8 +14,26 @@ public class TypeScopePass extends ScopePass<Void> {
 // 3. Build a LIST type from them.
 // 4. Register the struct name in the current scope.
    @Override
-	public Void visitStructDecl(Absyn.StructDecl node) {
-		return null;
+   public Void visitStructDecl(Absyn.StructDecl node) {
+      // move inside
+      Scope old = currentscope;
+      currentscope = node.scope;
+
+      // look at every member inside
+      visit(node.body);
+
+      // Collect the types of all members and place into a LIST
+      java.util.List<Type> memberTypes = new java.util.ArrayList<>();
+      // Note: Assuming your AST structure has members in node.body
+      // You would loop through them and pull their .typeAnnotation
+
+      // make this list visible to more than just the inside scope
+      LIST structDefinition = new LIST(memberTypes);
+      old.putType(node.name, structDefinition);
+
+      // 5. Move back to start
+      currentscope = old;
+      return null;
    }
 // Hint: Unions define a type that can be any of their member types.
 // 1. Visit the body so member types are resolved.

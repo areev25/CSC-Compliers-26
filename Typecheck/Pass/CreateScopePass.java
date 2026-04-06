@@ -2,7 +2,8 @@ package Typecheck.Pass;
 
 import Absyn.*;
 import Typecheck.SymbolTable.*;
-
+//This file goes through the AST and creates
+// dedicated placeholders that the it can later go back to
 public class CreateScopePass extends Pass<Void> {
 
     protected Scope currentscope;
@@ -11,8 +12,19 @@ public class CreateScopePass extends Pass<Void> {
     public CreateScopePass() {
         this.globalscope = new Scope();
         this.currentscope = globalscope;
+        //need to add a visitor method becuase if the first node
+        // isn't in the global scope it will start with a null scope
     }
-
+    //this connects the AST to the symbol Table
+    @Override
+    public Void visitCompStmt(CompStmt node) {
+        // If this is the very first CompStmt (the whole file), 
+        // it needs to know about the global scope!
+        node.scope = currentscope; 
+        
+        // Default behavior from Pass.java will visit decl_list and stmt_list
+        return super.visitCompStmt(node); 
+    }
 // Hint: Functions introduce a new nested scope.
 // 1. Create a new Scope whose parent is the current scope.
 // 2. Temporarily switch currentscope to this new scope.
