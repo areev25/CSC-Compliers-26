@@ -105,7 +105,7 @@ public class Pass<T> implements Visitor<T> {
       visit(node.expression);
       visit(node.if_statement);
      //create the conditional because many if/else statements have no else block
-	  if visit(node.else_statement!=null);
+	  if (node.else_statement!=null);
 	  	visit(node.else_statement)
 		return defaultReturn;
 	}
