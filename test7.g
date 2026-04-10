@@ -1,8 +1,9 @@
-// Passes
-var int x = 1;
-var int y = 2;
-var int passes = x + y;
-// Fails
-var int fails = "Hello" + "World";
-// Fails here too:
-var string alsofails = "Hello" + "World";
+struct myStruct {
+    int x;
+    int y;
+}
+
+fun void main() {
+    var myStruct s = {1, 2};
+    var myStruct t ={1};
+}

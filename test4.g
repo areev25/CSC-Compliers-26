@@ -1,9 +1,3 @@
-struct myStruct {
-      int[][] x;
-      int y;
+fun void test() {
+    return 0; // Should FAIL
 }
-// Would Type Check
-var myStruct s = {{{1,2},{1,2}},1};
-
-//  Would not Type Check
-myStruct s = {1,2};
